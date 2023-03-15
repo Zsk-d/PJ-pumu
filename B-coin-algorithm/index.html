@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="util.js"></script>
+    <script src="vue.js"></script>
+    <script src="antd.min.js"></script>
+    <script src="moment.js"></script>
+    <link href="antd.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+
+        .t-col {
+            display: table-cell;
+            border: 1px black solid;
+            width: 80px;
+            height: 28px;
+            padding: 7px;
+            text-align: center;
+        }
+
+        .current-cell {
+            background-color: #b7eeaa;
+        }
+
+        .current-row-col {
+            background-color: #6de951;
+        }
+
+        .row-col {
+            font-size: larger;
+            font-weight: bold;
+        }
+
+        .error-cell {
+            background-color: rgb(212, 78, 78);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 设置 -->
+        <a-form style="margin:20px" layout="inline">
+            <a-form-item label="最大面值和">
+                <a-input v-model="total" style="width: 100px;" type="number" />
+            </a-form-item>
+            <a-form-item label="硬币面值列表">
+                <a-input v-model="coins" style="width: 200px;" />
+            </a-form-item>
+            <a-form-item>
+                <a-button type="primary" @click="init">创建</a-button>
+            </a-form-item>
+        </a-form>
+
+        <!-- 目标 -->
+        <div style="margin:20px">
+            <div v-for="(rows, indexr) in datas">
+                <div v-for="(col, indexc) in rows" :class="{'current-row-col':isCurrentRowCol(indexr,indexc) && currentIndex != -1,
+                    'current-cell':isCurrentCell(indexr,indexc) && currentIndex != -1, /* 当前答题项背景 */
+                    'row-col':isColHead(indexr,indexc) || isRowHead(indexr,indexc), /* 头 字体加粗 */
+                    'error-cell':isErrorCell(indexr,indexc), /* 错误单元格背景 */
+                    't-col':true}">
+                    <label>{{
+                        isErrorCell(indexr,indexc)?errorVal: /* 错误时显示错误值 */
+                        isRowHead(indexr,indexc) || isColHead(indexr,indexc) || isCellOk(indexr,indexc)?col: /* 完成后的和头直接显示内容 */
+                        isCurrentCell(indexr,indexc)?'?' /* 当前答题项为 ? */
+                        :'' /* 错误时显示错误值 */
+                        }}</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 作答选项 -->
+        <div style="margin:20px">
+            <a-form>
+                <a-form-item>
+                    <a-button-group>
+                        <a-button v-for="item in selectList" @click="checkCurrent(item)">{{ item }}</a-button>
+                    </a-button-group>
+                </a-form-item>
+            </a-form>
+        </div>
+
+    </div>
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                let self = this;
+                return {
+                    datas: [],
+                    selectList: [],
+                    currentIndex: 0,
+                    errorVal: null,
+                    total: 6, // 默认最大面值和
+                    coins: "[3,1,2,5,4]" // 默认硬币面值列表
+                }
+            },
+            watch: {
+            },
+            created() {
+            },
+            mounted() {
+                // 页面加载后初始化界面一次
+                this.init()
+            },
+            methods: {
+                init() {
+                    // 根据给定参数生成题和答案list
+                    this.datas = createDPTable(eval(this.coins), parseInt(this.total))
+                    this.currentIndex = false
+                    this.selectList = []
+                    this.errorVal = null
+                    // 准备答案列表, 汇总答案, Infinity 放在最后
+                    let hasInfinity = false;
+                    for (let i = 1; i < this.datas.length; i++) {
+                        for (let j = 1; j < this.datas[i].length; j++) {
+                            if (!hasInfinity) {
+                                hasInfinity = this.datas[i][j] == 'Infinity'
+                            }
+                            if (this.selectList.indexOf(this.datas[i][j]) != -1 || this.datas[i][j] == 'Infinity') {
+                                continue
+                            } else {
+                                this.selectList.push(this.datas[i][j])
+                            }
+                        }
+                    }
+                    if (hasInfinity) {
+                        this.selectList.push('Infinity')
+                    }
+                },
+                // 点击选项时, 检查结果是否正确
+                checkCurrent(val) {
+                    // 答题完成时标记, 不继续处理
+                    if (this.currentIndex == -1) {
+                        return false;
+                    }
+                    let trueVal = this.datas[this.getCurrentRow()][this.getCurrentCol()]
+                    if (trueVal == val) {
+                        // 正确时, 增加当前答题索引
+                        this.errorVal = null
+                        this.next()
+                    } else {
+                        // 不正确时, 保存不正确的值
+                        this.errorVal = val
+                    }
+                },
+                next() {
+                    // 判断是否答题完成
+                    if (this.currentIndex >= ((this.datas[0].length - 1) * (this.datas.length - 1) - 1)) {
+                        // 完成标记
+                        this.currentIndex = -1
+                        alert('finish !')
+                    } else {
+                        this.currentIndex++
+                    }
+                },
+                // 是否为错误项
+                isErrorCell(rowIndex, colIndex) {
+                    return this.errorVal != null && this.isCurrentCell(rowIndex, colIndex)
+                },
+                // 是否是行头
+                isRowHead(rowIndex, colIndex) {
+                    return rowIndex == 0 && colIndex > 0
+                },
+                // 是否是列头
+                isColHead(rowIndex, colIndex) {
+                    return colIndex == 0 && rowIndex > 0
+                },
+                // 获取当前答题索引对应的行
+                getCurrentRow() {
+                    let colCount = this.datas[0].length - 1
+                    return parseInt(this.currentIndex / colCount) + 1
+                },
+                // 获取当前答题索引对应的列
+                getCurrentCol() {
+                    let colCount = this.datas[0].length - 1
+                    return this.currentIndex % colCount + 1
+                },
+                // 判断是否为单元格所在行列
+                isCurrentRowCol(rowIndex, colIndex) {
+                    return (this.isRowHead(rowIndex, colIndex) || this.isColHead(rowIndex, colIndex)) && (this.getCurrentRow(rowIndex, colIndex) == rowIndex || this.getCurrentCol(rowIndex, colIndex) == colIndex)
+                },
+                // 是否为当前答题项
+                isCurrentCell(rowIndex, colIndex) {
+                    return this.getCurrentRow(rowIndex, colIndex) == rowIndex && this.getCurrentCol(rowIndex, colIndex) == colIndex
+                },
+                // 当前答题项是否完成
+                isCellOk(rowIndex, colIndex) {
+                    let colMax = this.datas[0].length - 1
+                    return this.currentIndex > ((rowIndex - 1) * colMax + colIndex - 1) || this.currentIndex == -1
+                }
+
+            }
+        })
+    </script>
+</body>
+
+</html>
